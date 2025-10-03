@@ -10,48 +10,60 @@
 
     while (true) {
         try {
-            // 1. Wait for search bar
+            console.log("🔎 Waiting for search bar...");
             let searchBox;
             while (!(searchBox = document.querySelector("input[placeholder*='help']"))) {
-                await delay(500);
+                await delay(1000);
             }
 
-            // 2. Type random text and search
+            // 1. Type random text in search bar
             searchBox.value = randomText();
             searchBox.dispatchEvent(new Event("input", { bubbles: true }));
+            console.log("⌨️ Typed random text in search bar.");
+            await delay(7000);
+
+            // 2. Click the search button
             let searchBtn = document.querySelector("button svg")?.closest("button") 
                          || document.querySelector("button[type='submit']");
-            if (searchBtn) searchBtn.click();
-            await delay(5000); // wait for results to load
+            if (searchBtn) {
+                searchBtn.click();
+                console.log("🔍 Clicked search button.");
+            }
+            await delay(7000);
 
             // 3. Select Location = India
-            let locationDropdown = document.querySelector("select");
+            let locationDropdown = [...document.querySelectorAll("select")]
+                .find(sel => [...sel.options].some(opt => opt.text.includes("India")));
             if (locationDropdown) {
-                locationDropdown.value = "India";
+                locationDropdown.value = [...locationDropdown.options]
+                    .find(opt => opt.text.includes("India")).value;
                 locationDropdown.dispatchEvent(new Event("change", { bubbles: true }));
+                console.log("🌍 Location set to India.");
             }
-            await delay(4000);
+            await delay(7000);
 
-            // 4. Click the first available search result
+            // 4. Click the first search result
             let firstResult;
-            while (!(firstResult = document.querySelector("a, h3, div[role='link'], .title, .result-item"))) {
-                await delay(500);
+            while (!(firstResult = document.querySelector("a, h3, .title, .result-item"))) {
+                await delay(1000);
             }
             firstResult.click();
-            await delay(5000);
+            console.log("📑 Clicked first search result.");
+            await delay(7000);
 
             // 5. Click on ASK logo (top-left)
             let askLogo;
             while (!(askLogo = [...document.querySelectorAll("a, div, span, img")]
                 .find(el => el.innerText?.trim() === "ASK" || el.getAttribute("alt") === "ASK"))) {
-                await delay(500);
+                await delay(1000);
             }
             askLogo.click();
-            await delay(5000);
+            console.log("🏠 Clicked ASK logo (home).");
+            await delay(7000);
 
         } catch (err) {
-            console.error("Error:", err);
-            await delay(5000);
+            console.error("⚠️ Error in automation:", err);
+            await delay(7000);
         }
     }
 })();
