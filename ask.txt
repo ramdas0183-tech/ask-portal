@@ -25,34 +25,32 @@
             console.log("⌨️ Typed random text");
             await delay(7000);
 
-            // 2. Find 3-line menu button INSIDE the same container as search bar
+            // 2. Click the 3-line menu button
             let container = searchBox.closest("div, form, header");
             let threeLineBtn = container ? container.querySelector("button, [role='button']") : null;
             if (threeLineBtn) {
                 click(threeLineBtn);
                 console.log("☰ Clicked 3-line filter button");
-            } else {
-                console.warn("⚠️ Could not find 3-line button");
             }
             await delay(7000);
 
-            // 3. Select India from Location dropdown/menu
-            let indiaOption;
-            while (!(indiaOption = [...document.querySelectorAll("option, div, li, button, span")]
+            // 3. Select India (works for li, div, span, button, option)
+            let indiaEl;
+            while (!(indiaEl = [...document.querySelectorAll("li, div, span, button, option")]
                 .find(el => /india/i.test(el.innerText || "")))) {
                 await delay(1000);
             }
-            click(indiaOption);
+            click(indiaEl);
             console.log("🌍 Selected India");
             await delay(7000);
 
-            // 4. Click Search (magnifier button)
+            // 4. Click Search (magnifier)
             let searchBtn;
             while (!(searchBtn = document.querySelector("button svg[viewBox*='magnifying']")?.closest("button"))) {
                 await delay(1000);
             }
             click(searchBtn);
-            console.log("🔍 Clicked Search button");
+            console.log("🔍 Clicked search button");
             await delay(7000);
 
             // 5. Click first result
@@ -64,7 +62,7 @@
             console.log("📑 Clicked first result");
             await delay(7000);
 
-            // 6. Click ASK logo
+            // 6. Click ASK logo (home)
             let askLogo;
             while (!(askLogo = [...document.querySelectorAll("a, span, img")]
                 .find(el => /^\s*ASK\s*$/i.test(el.innerText || "") || /ask/i.test(el.getAttribute("alt") || "")))) {
