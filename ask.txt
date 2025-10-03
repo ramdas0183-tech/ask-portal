@@ -10,21 +10,22 @@
 
     while (true) {
         try {
+            // 1. Wait for search bar
             console.log("🔎 Waiting for search bar...");
             let searchBox;
-            while (!(searchBox = document.querySelector("input[placeholder*='help']"))) {
+            while (!(searchBox = document.querySelector("input[placeholder*='How can I help']"))) {
                 await delay(1000);
             }
 
-            // 1. Type random text
+            // Type random text
             searchBox.value = randomText();
             searchBox.dispatchEvent(new Event("input", { bubbles: true }));
-            console.log("⌨️ Typed random text in search bar.");
+            console.log("⌨️ Typed random text.");
             await delay(7000);
 
-            // 2. Click filter button (3 lines)
+            // 2. Click the 3-line filter button
             let filterBtn;
-            while (!(filterBtn = document.querySelector("button svg")?.closest("button"))) {
+            while (!(filterBtn = document.querySelector("button[aria-label*='Filter'], button svg")?.closest("button"))) {
                 await delay(1000);
             }
             filterBtn.click();
@@ -32,37 +33,50 @@
             await delay(7000);
 
             // 3. Select Location = India
-            let locationDropdown = [...document.querySelectorAll("select")]
-                .find(sel => [...sel.options].some(opt => opt.text.includes("India")));
-            if (locationDropdown) {
-                locationDropdown.value = [...locationDropdown.options]
-                    .find(opt => opt.text.includes("India")).value;
+            let locationDropdown;
+            while (!(locationDropdown = [...document.querySelectorAll("select")]
+                .find(sel => [...sel.options].some(opt => opt.text.includes("India"))))) {
+                await delay(1000);
+            }
+
+            let indiaOption = [...locationDropdown.options].find(opt => opt.text.includes("India"));
+            if (indiaOption) {
+                locationDropdown.value = indiaOption.value;
                 locationDropdown.dispatchEvent(new Event("change", { bubbles: true }));
                 console.log("🌍 Location set to India.");
             }
             await delay(7000);
 
-            // 4. Click the first search result
+            // 4. Click the Search button (magnifying glass)
+            let searchBtn;
+            while (!(searchBtn = document.querySelector("button svg[viewBox*='magnifying']")?.closest("button"))) {
+                await delay(1000);
+            }
+            searchBtn.click();
+            console.log("🔍 Clicked search.");
+            await delay(7000);
+
+            // 5. Click first search result
             let firstResult;
-            while (!(firstResult = document.querySelector("a, h3, .title, .result-item"))) {
+            while (!(firstResult = document.querySelector(".result-item, .list-item, a, h3"))) {
                 await delay(1000);
             }
             firstResult.click();
             console.log("📑 Clicked first search result.");
             await delay(7000);
 
-            // 5. Click ASK logo (top-left)
+            // 6. Click ASK logo (top-left)
             let askLogo;
-            while (!(askLogo = [...document.querySelectorAll("a, div, span, img")]
+            while (!(askLogo = [...document.querySelectorAll("a, span, img")]
                 .find(el => el.innerText?.trim() === "ASK" || el.getAttribute("alt") === "ASK"))) {
                 await delay(1000);
             }
             askLogo.click();
-            console.log("🏠 Clicked ASK logo (home).");
+            console.log("🏠 Returned to ASK home.");
             await delay(7000);
 
         } catch (err) {
-            console.error("⚠️ Error in automation:", err);
+            console.error("⚠️ Error:", err);
             await delay(7000);
         }
     }
