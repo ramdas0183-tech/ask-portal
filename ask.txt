@@ -16,19 +16,19 @@
                 await delay(1000);
             }
 
-            // 1. Type random text in search bar
+            // 1. Type random text
             searchBox.value = randomText();
             searchBox.dispatchEvent(new Event("input", { bubbles: true }));
             console.log("⌨️ Typed random text in search bar.");
             await delay(7000);
 
-            // 2. Click the search button
-            let searchBtn = document.querySelector("button svg")?.closest("button") 
-                         || document.querySelector("button[type='submit']");
-            if (searchBtn) {
-                searchBtn.click();
-                console.log("🔍 Clicked search button.");
+            // 2. Click filter button (3 lines)
+            let filterBtn;
+            while (!(filterBtn = document.querySelector("button svg")?.closest("button"))) {
+                await delay(1000);
             }
+            filterBtn.click();
+            console.log("⚙️ Opened filter menu.");
             await delay(7000);
 
             // 3. Select Location = India
@@ -51,7 +51,7 @@
             console.log("📑 Clicked first search result.");
             await delay(7000);
 
-            // 5. Click on ASK logo (top-left)
+            // 5. Click ASK logo (top-left)
             let askLogo;
             while (!(askLogo = [...document.querySelectorAll("a, div, span, img")]
                 .find(el => el.innerText?.trim() === "ASK" || el.getAttribute("alt") === "ASK"))) {
