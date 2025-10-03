@@ -1,0 +1,57 @@
+(async function automateASKPortal() {
+    function delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function randomText(length = 6) {
+        const chars = "abcdefghijklmnopqrstuvwxyz";
+        return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+    }
+
+    while (true) {
+        try {
+            // 1. Wait for search bar
+            let searchBox;
+            while (!(searchBox = document.querySelector("input[placeholder*='help']"))) {
+                await delay(500);
+            }
+
+            // 2. Type random text and search
+            searchBox.value = randomText();
+            searchBox.dispatchEvent(new Event("input", { bubbles: true }));
+            let searchBtn = document.querySelector("button svg")?.closest("button") 
+                         || document.querySelector("button[type='submit']");
+            if (searchBtn) searchBtn.click();
+            await delay(5000); // wait for results to load
+
+            // 3. Select Location = India
+            let locationDropdown = document.querySelector("select");
+            if (locationDropdown) {
+                locationDropdown.value = "India";
+                locationDropdown.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+            await delay(4000);
+
+            // 4. Click the first available search result
+            let firstResult;
+            while (!(firstResult = document.querySelector("a, h3, div[role='link'], .title, .result-item"))) {
+                await delay(500);
+            }
+            firstResult.click();
+            await delay(5000);
+
+            // 5. Click on ASK logo (top-left)
+            let askLogo;
+            while (!(askLogo = [...document.querySelectorAll("a, div, span, img")]
+                .find(el => el.innerText?.trim() === "ASK" || el.getAttribute("alt") === "ASK"))) {
+                await delay(500);
+            }
+            askLogo.click();
+            await delay(5000);
+
+        } catch (err) {
+            console.error("Error:", err);
+            await delay(5000);
+        }
+    }
+})();
