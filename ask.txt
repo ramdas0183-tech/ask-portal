@@ -1,12 +1,12 @@
-(async function fullAskAutomation() {
-  // set to true to stop
+(async function() {
+  // stop flag (set to true to stop)
   window.__ASK_AUTOMATION_STOP = window.__ASK_AUTOMATION_STOP || false;
 
   const delay = ms => new Promise(res => setTimeout(res, ms));
 
-  function randomText(len = 6) {
+  function randomText(length = 6) {
     const chars = "abcdefghijklmnopqrstuvwxyz";
-    return Array.from({length: len}, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+    return Array.from({length}, () => chars[Math.floor(Math.random() * chars.length)]).join("");
   }
 
   function isVisible(el) {
@@ -15,55 +15,29 @@
     return r.width > 2 && r.height > 2 && r.bottom > 0 && r.right > 0;
   }
 
-  function simulateTyping(input, text, charDelay = 120) {
-    try { input.focus(); } catch(e){}
-    input.value = ""; // clear
-    for (const ch of text) {
-      input.value += ch;
-      input.dispatchEvent(new Event("input", {bubbles: true}));
-      input.dispatchEvent(new KeyboardEvent("keydown", {key: ch, bubbles: true}));
-      input.dispatchEvent(new KeyboardEvent("keyup", {key: ch, bubbles: true}));
-      // small pause between characters
-    }
-    // final input event
-    input.dispatchEvent(new Event("input", {bubbles: true}));
-  }
-
-  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
   function clickEl(el) {
     if (!el) return;
-    try {
-      el.dispatchEvent(new MouseEvent("mouseover", {bubbles:true}));
-      el.dispatchEvent(new MouseEvent("mousedown", {bubbles:true}));
-      el.dispatchEvent(new MouseEvent("mouseup", {bubbles:true}));
-      el.click();
-    } catch (e) {
-      try { el.click(); } catch(e2){}
-    }
+    ["mouseover","mousedown","mouseup","click"].forEach(name =>
+      el.dispatchEvent(new MouseEvent(name, { bubbles: true, cancelable: true, view: window }))
+    );
   }
 
-  async function waitFor(fnOrSel, desc = "element", interval = 800) {
+  async function waitFor(fn, desc) {
+    // waits until fn() returns a truthy value; logs progress
     console.log(`⏳ waiting for ${desc}...`);
     while (!window.__ASK_AUTOMATION_STOP) {
       try {
-        const val = (typeof fnOrSel === "string") ? document.querySelector(fnOrSel) : fnOrSel();
-        if (val) {
-          // if selector, ensure visible
-          if (typeof fnOrSel === "string" && !isVisible(val)) {
-            await delay(interval);
-            continue;
-          }
+        const v = fn();
+        if (v) {
           console.log(`✅ found ${desc}`);
-          return val;
+          return v;
         }
-      } catch(e){}
-      await delay(interval);
+      } catch (e) { /* ignore */ }
+      await delay(1000);
     }
     throw new Error("Stopped by user");
   }
 
-  // heuristics to find the search input
   function findSearchInput() {
     const tries = [
       "input[placeholder*='How can I help']",
@@ -80,213 +54,171 @@
     return null;
   }
 
-  // find left-most SVG button inside same container as input (hamburger)
   function findFilterButtonNear(input) {
     if (!input) return null;
+    const inputRect = input.getBoundingClientRect();
+    // look inside nearest likely container first
     const container = input.closest("form, .search, .search-bar, .input-group, header, .top") || document;
-    const all = Array.from(container.querySelectorAll("button, [role='button'], a, div")).filter(isVisible);
-    // prefer those with SVG (icon buttons)
-    let candidates = all.filter(el => el.querySelector && el.querySelector("svg"));
-    // prefer those located to the left of input
-    try {
-      const inRect = input.getBoundingClientRect();
-      const left = candidates.filter(c => {
+    const candidates = Array.from(container.querySelectorAll("button, a, [role='button'], div"))
+      .filter(isVisible)
+      .filter(el => el.querySelector && el.querySelector("svg")); // only elements that have an SVG (icon buttons)
+    // Prefer candidates on left side of the input (hamburger is left)
+    const leftCandidates = candidates.filter(c => {
+      const r = c.getBoundingClientRect();
+      return r.left <= inputRect.left + 40; // near left of input
+    });
+    const scored = (arr) => arr
+      .map(c => {
+        const svg = c.querySelector("svg");
+        const paths = svg ? svg.querySelectorAll("path, rect, line").length : 0;
+        // score: prefer svg with multiple paths/rects (likely hamburger)
         const r = c.getBoundingClientRect();
-        return (r.left <= inRect.left + 40);
-      });
-      if (left.length) {
-        left.sort((a,b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-        return left[0];
-      }
-    } catch(e){}
-    if (candidates.length) {
-      candidates.sort((a,b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
-      return candidates[0];
+        const score = (paths * 10) - r.left; // prefer more paths & more left
+        return {el: c, score};
+      })
+      .sort((a,b) => b.score - a.score);
+    if (leftCandidates.length) {
+      return scored(leftCandidates)[0].el;
     }
-    // fallback to textual match anywhere on page
-    const fallback = Array.from(document.querySelectorAll("button, [role='button'], a")).find(el =>
-      /filter|menu|hamburg|hamburger|more|☰|≡/i.test((el.getAttribute("aria-label")||"") + (el.title||"") + (el.innerText||""))
+    if (candidates.length) {
+      return scored(candidates)[0].el;
+    }
+    // fallback: search page-wide for element with aria-label/title/filter/menu text
+    const fallback = Array.from(document.querySelectorAll("button, a, [role='button']")).find(el =>
+      /filter|menu|hamburg|hamburger|more/i.test((el.getAttribute("aria-label")||"") + (el.title||"") + (el.innerText||""))
     );
     return fallback || null;
   }
 
-  // find the India option/control (select or custom)
-  function findIndiaControl() {
-    // 1) native select with India
+  function findRightSideSearchButton(input) {
+    const inputRect = input.getBoundingClientRect();
+    const container = input.closest("form, .search, .search-bar, .input-group") || document;
+    const btns = Array.from(container.querySelectorAll("button, a")).filter(isVisible);
+    // prefer those right of input
+    const right = btns.filter(b => b.getBoundingClientRect().left >= inputRect.right - 10);
+    if (right.length) return right[0];
+    // fallback: look for buttons with aria-label/title containing 'search' or look for svg buttons
+    const searchBtn = btns.find(b => /search|find|go|magnif/i.test((b.getAttribute("aria-label")||"") + (b.title||"") + (b.innerText||"")));
+    if (searchBtn) return searchBtn;
+    return btns.find(b => b.querySelector && b.querySelector("svg")) || null;
+  }
+
+  function findLocationSelectOrCustom() {
+    // 1) native select with India option
     const selects = Array.from(document.querySelectorAll("select")).filter(s =>
       Array.from(s.options).some(o => /india/i.test(o.text))
     );
     if (selects.length) return selects[0];
-
-    // 2) custom menu items somewhere visible that contain "India"
-    const els = Array.from(document.querySelectorAll("li, button, div, span, a")).filter(isVisible);
-    const indiaEl = els.find(e => /(^|\s)india(\s|$)/i.test((e.innerText||"").trim()));
-    if (indiaEl) return indiaEl;
-
-    // 3) sometimes options appear under overlays appended to body (same query covers that)
-    return null;
-  }
-
-  function findSearchButton(input) {
-    if (!input) {
-      // global fallback
-      const globalBtn = Array.from(document.querySelectorAll("button, a")).find(b =>
-        /search|find|go|magnif|🔍/i.test((b.getAttribute("aria-label")||"") + (b.title||"") + (b.innerText||""))
-      );
-      return globalBtn || null;
-    }
-    const container = input.closest("form, .search, .search-bar, .input-group") || document;
-    const btns = Array.from(container.querySelectorAll("button, a")).filter(isVisible);
-    // prefer right side of input
-    try {
-      const inRect = input.getBoundingClientRect();
-      const right = btns.filter(b => {
-        const r = b.getBoundingClientRect();
-        return r.left >= (inRect.right - 8);
-      });
-      if (right.length) return right[0];
-    } catch(e){}
-    // fallback: any button in container with search-like attrs
-    const searchBtn = btns.find(b =>
-      /search|find|go|magnif|🔍/i.test((b.getAttribute("aria-label")||"") + (b.title||"") + (b.innerText||""))
-    );
-    if (searchBtn) return searchBtn;
-    // last fallback: any visible button with svg
-    return btns.find(b => b.querySelector && b.querySelector("svg")) || null;
-  }
-
-  // pick first visible result
-  function findFirstResult() {
-    const selectors = ["[role='link']", "a[href]", ".result-item", ".list-item", ".card", "article", "h3"];
-    for (const sel of selectors) {
-      const els = Array.from(document.querySelectorAll(sel)).filter(isVisible);
-      if (els.length) {
-        // choose top-most with text
-        els.sort((a,b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
-        const chosen = els.find(e => (e.innerText || "").trim().length > 1) || els[0];
-        if (chosen) return chosen;
+    // 2) custom dropdowns: search for visible elements that have label 'Location' nearby
+    const labels = Array.from(document.querySelectorAll("label, div, span")).filter(el => /location/i.test(el.innerText));
+    for (const lbl of labels) {
+      // try next element for a dropdown-like control
+      const next = lbl.nextElementSibling;
+      if (!next) continue;
+      // if next has list of items that contain India
+      if (Array.from(next.querySelectorAll("*")).some(ch => /india/i.test(ch.innerText || ""))) {
+        return next;
       }
     }
-    return null;
+    // 3) check common dropdown/item lists
+    const items = Array.from(document.querySelectorAll("div, li, button")).find(el => /india/i.test(el.innerText || ""));
+    return items || null;
   }
 
-  // Find ASK logo in top-left area
-  function findAskLogo() {
-    const els = Array.from(document.querySelectorAll("a, img, button, div, span")).filter(isVisible);
-    const topLeft = els.filter(e => {
-      const r = e.getBoundingClientRect();
-      return r.top < 140 && r.left < 220;
-    });
-    const exact = topLeft.find(e => /^\s*ASK\s*$/i.test((e.innerText||"")) || /ask/i.test((e.getAttribute("alt")||"") + (e.title||"")));
-    return exact || topLeft[0] || els.find(e => /ask/i.test((e.innerText||"") + (e.getAttribute("alt")||"") + (e.title||"")));
-  }
-
-  // MAIN loop
   try {
     while (!window.__ASK_AUTOMATION_STOP) {
-      console.log("========== New automation cycle ==========");
-
-      // 1) find search input
+      // 1. Wait and find search input
       const searchInput = await waitFor(() => findSearchInput(), "search input");
-      // type random text into it (simulate typing)
-      const q = randomText(6);
-      console.log("Typing query:", q);
-      simulateTyping(searchInput, q);
+      // type slowly (simulate typing)
+      try {
+        searchInput.focus();
+      } catch(e){}
+      const text = randomText(6);
+      searchInput.value = ""; // clear first
+      for (const ch of text) {
+        // add each char and dispatch events
+        searchInput.value += ch;
+        searchInput.dispatchEvent(new Event("input", {bubbles: true}));
+        searchInput.dispatchEvent(new KeyboardEvent("keydown", {key: ch, bubbles: true}));
+        await delay(150);
+      }
+      console.log("⌨️ typed:", text);
       await delay(7000);
 
-      // 2) click 3-line button beside search
-      const filterBtn = findFilterButtonNear(searchInput) || await waitFor(() => findFilterButtonNear(searchInput), "3-line filter button");
-      if (!filterBtn) console.warn("Could not find 3-line button — continuing anyway");
-      else {
-        console.log("Clicking 3-line filter button");
-        clickEl(filterBtn);
-      }
+      // 2. Find & click the 3-line filter button (left side)
+      const filterBtn = await waitFor(() => findFilterButtonNear(searchInput), "3-line (filter) button near search");
+      clickEl(filterBtn);
+      console.log("⚙️ clicked filter button");
       await delay(7000);
 
-      // 3) select India
-      let indiaControl = findIndiaControl();
-      if (!indiaControl) {
-        // wait until menu or India appears
-        indiaControl = await waitFor(() => findIndiaControl(), "India option/control");
-      }
-      if (indiaControl) {
-        const tag = (indiaControl.tagName || "").toLowerCase();
-        if (tag === "select") {
-          // native select
-          const opt = Array.from(indiaControl.options).find(o => /india/i.test(o.text));
-          if (opt) {
-            indiaControl.value = opt.value;
-            indiaControl.dispatchEvent(new Event("change", {bubbles: true}));
-            console.log("Selected India in native <select>");
-          }
-        } else {
-          // custom: click the control (if it's a wrapper) then click the exact India element
-          try { clickEl(indiaControl); } catch(e){}
-          await delay(600);
-          // try to click a direct element that contains India
-          const indiaEl = Array.from(document.querySelectorAll("li, button, div, span, a")).filter(isVisible).find(e => /(^|\s)india(\s|$)/i.test((e.innerText||"").trim()));
-          if (indiaEl) {
-            clickEl(indiaEl);
-            console.log("Clicked India in custom menu");
-          } else {
-            console.warn("India control clicked but exact item not found — continuing");
-          }
+      // 3. Wait for location selector / option to appear and select India
+      const locationControl = await waitFor(() => findLocationSelectOrCustom(), "location dropdown / control (India)");
+      if (locationControl.tagName && locationControl.tagName.toLowerCase() === "select") {
+        const opt = Array.from(locationControl.options).find(o => /india/i.test(o.text));
+        if (opt) {
+          locationControl.value = opt.value;
+          locationControl.dispatchEvent(new Event("change", {bubbles: true}));
+          console.log("🌍 set native select to India");
         }
       } else {
-        console.warn("India control not found");
-      }
-      await delay(7000);
-
-      // After selecting India, ensure the search input still contains the query;
-      // some UIs clear it when menu opens — retype if needed.
-      const updatedInput = findSearchInput();
-      if (updatedInput) {
-        if (!updatedInput.value || !updatedInput.value.includes(q)) {
-          console.log("Query was cleared by menu — retyping query");
-          simulateTyping(updatedInput, q);
-          await delay(7000);
+        // custom control: try clicking the control then click the India option
+        clickEl(locationControl);
+        await delay(700);
+        const opt = Array.from(document.querySelectorAll("div, li, button, span")).find(el => /india/i.test(el.innerText || ""));
+        if (opt) {
+          clickEl(opt);
+          console.log("🌍 clicked India in custom dropdown");
         } else {
-          console.log("Query preserved after selecting India");
+          console.log("⚠️ Could not find 'India' option in custom dropdown");
         }
       }
-
-      // 4) Click Search (magnifier/go)
-      const searchBtn = findSearchButton(updatedInput || searchInput) || await waitFor(() => findSearchButton(updatedInput || searchInput), "search (magnifier) button");
-      if (searchBtn) {
-        console.log("Clicking Search button");
-        clickEl(searchBtn);
-      } else {
-        console.warn("Search button not found — trying Enter key on input");
-        try {
-          (updatedInput || searchInput).dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}));
-          (updatedInput || searchInput).dispatchEvent(new KeyboardEvent("keyup", {key: "Enter", bubbles: true}));
-        } catch(e){}
-      }
       await delay(7000);
 
-      // 5) Click first result
-      const firstResult = findFirstResult() || await waitFor(() => findFirstResult(), "first search result");
-      if (firstResult) {
-        console.log("Clicking first search result");
-        clickEl(firstResult);
-      } else {
-        console.warn("No first result found");
-      }
+      // 4. Click the search (magnifier/go) button on right
+      const searchBtn = await waitFor(() => findRightSideSearchButton(searchInput), "search (magnifier) button");
+      clickEl(searchBtn);
+      console.log("🔍 clicked search");
       await delay(7000);
 
-      // 6) Click ASK logo (top-left) to return home
-      const askLogo = findAskLogo() || await waitFor(() => findAskLogo(), "ASK logo (top-left)");
-      if (askLogo) {
-        console.log("Clicking ASK logo to return home");
-        clickEl(askLogo);
-      } else {
-        console.warn("ASK logo not found");
-      }
+      // 5. Click the first visible search result
+      const firstResult = await waitFor(() => {
+        // prefer structured result lists; otherwise find first visible link/article/h3 with text
+        const selectors = [".result-item, .list-item, .card, article, li a, a[href]"];
+        for (const sel of selectors) {
+          const els = Array.from(document.querySelectorAll(sel)).filter(isVisible);
+          if (els.length) {
+            // pick the top-most by bounding rect
+            els.sort((a,b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+            const chosen = els.find(e => (e.innerText || "").trim().length > 1) || els[0];
+            if (chosen) return chosen;
+          }
+        }
+        // fallback: any visible anchor with text
+        const a = Array.from(document.querySelectorAll("a[href]")).filter(isVisible).find(x => (x.innerText||"").trim().length>1);
+        return a || null;
+      }, "first search result");
+      clickEl(firstResult);
+      console.log("📑 clicked first result");
       await delay(7000);
 
-      // loop continues
+      // 6. Click ASK logo (top-left) to return home
+      const askLogo = await waitFor(() => {
+        // prefer small elements in top-left area
+        const candidates = Array.from(document.querySelectorAll("a, button, img, div")).filter(isVisible)
+          .filter(el => {
+            const r = el.getBoundingClientRect();
+            return r.top < 120 && r.left < 220; // top-left area
+          });
+        const exact = candidates.find(el => /^\s*ASK\s*$/i.test((el.innerText||"")) || /ask/i.test((el.getAttribute("alt")||"") + (el.title||"")));
+        return exact || candidates[0] || null;
+      }, "ASK logo (top-left)");
+      clickEl(askLogo);
+      console.log("🏠 clicked ASK logo (back to home)");
+      await delay(7000);
+
+      // loop continues unless user stops
     }
   } catch (err) {
-    console.error("Automation stopped or error:", err);
+    console.error("Automation stopped:", err);
   }
 })();
