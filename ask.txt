@@ -15,17 +15,11 @@
 
     while (true) {
         try {
-            // 1. Wait for search input
+            // 1. Wait for search bar & 3-line button
             let searchBox;
             while (!(searchBox = document.querySelector("input[placeholder*='How can I help']"))) {
                 await delay(1000);
             }
-            searchBox.value = randomText();
-            searchBox.dispatchEvent(new Event("input", { bubbles: true }));
-            console.log("⌨️ Typed random text");
-            await delay(7000);
-
-            // 2. Click the 3-line menu button
             let container = searchBox.closest("div, form, header");
             let threeLineBtn = container ? container.querySelector("button, [role='button']") : null;
             if (threeLineBtn) {
@@ -34,7 +28,7 @@
             }
             await delay(7000);
 
-            // 3. Select India (works for li, div, span, button, option)
+            // 2. Select India
             let indiaEl;
             while (!(indiaEl = [...document.querySelectorAll("li, div, span, button, option")]
                 .find(el => /india/i.test(el.innerText || "")))) {
@@ -44,13 +38,22 @@
             console.log("🌍 Selected India");
             await delay(7000);
 
-            // 4. Click Search (magnifier)
+            // 3. Now type random text
+            searchBox = document.querySelector("input[placeholder*='How can I help']");
+            if (searchBox) {
+                searchBox.value = randomText();
+                searchBox.dispatchEvent(new Event("input", { bubbles: true }));
+                console.log("⌨️ Typed random text");
+            }
+            await delay(7000);
+
+            // 4. Click Search button
             let searchBtn;
             while (!(searchBtn = document.querySelector("button svg[viewBox*='magnifying']")?.closest("button"))) {
                 await delay(1000);
             }
             click(searchBtn);
-            console.log("🔍 Clicked search button");
+            console.log("🔍 Clicked Search button");
             await delay(7000);
 
             // 5. Click first result
