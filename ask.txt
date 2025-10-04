@@ -15,11 +15,17 @@
 
     while (true) {
         try {
-            // 1. Wait for search bar & 3-line button
+            // 1. Wait for search input
             let searchBox;
             while (!(searchBox = document.querySelector("input[placeholder*='How can I help']"))) {
                 await delay(1000);
             }
+            searchBox.value = randomText();
+            searchBox.dispatchEvent(new Event("input", { bubbles: true }));
+            console.log("⌨️ Typed random text");
+            await delay(7000);
+
+            // 2. Click 3-line filter button beside search bar
             let container = searchBox.closest("div, form, header");
             let threeLineBtn = container ? container.querySelector("button, [role='button']") : null;
             if (threeLineBtn) {
@@ -28,7 +34,7 @@
             }
             await delay(7000);
 
-            // 2. Select India
+            // 3. Select India from menu
             let indiaEl;
             while (!(indiaEl = [...document.querySelectorAll("li, div, span, button, option")]
                 .find(el => /india/i.test(el.innerText || "")))) {
@@ -38,16 +44,7 @@
             console.log("🌍 Selected India");
             await delay(7000);
 
-            // 3. Now type random text
-            searchBox = document.querySelector("input[placeholder*='How can I help']");
-            if (searchBox) {
-                searchBox.value = randomText();
-                searchBox.dispatchEvent(new Event("input", { bubbles: true }));
-                console.log("⌨️ Typed random text");
-            }
-            await delay(7000);
-
-            // 4. Click Search button
+            // 4. Click Search (magnifier button)
             let searchBtn;
             while (!(searchBtn = document.querySelector("button svg[viewBox*='magnifying']")?.closest("button"))) {
                 await delay(1000);
