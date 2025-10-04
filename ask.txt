@@ -1,79 +1,109 @@
 (async function automateASKPortal() {
+    // Utility: wait
     function delay(ms) {
-        return new Promise(res => setTimeout(res, ms));
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
-    function randomText(len = 6) {
+
+    // Utility: random word
+    function randomText(length = 6) {
         const chars = "abcdefghijklmnopqrstuvwxyz";
-        return Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+        return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
     }
-    function click(el) {
+
+    // Utility: check visible
+    function isVisible(el) {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }
+
+    // Utility: wait for element
+    async function waitFor(selectorOrFn, desc = "element") {
+        let el;
+        for (let i = 0; i < 50; i++) {
+            el = typeof selectorOrFn === "string" ? document.querySelector(selectorOrFn) : selectorOrFn();
+            if (el && isVisible(el)) return el;
+            await delay(500);
+        }
+        throw new Error("Timeout: " + desc);
+    }
+
+    // Utility: safe click
+    function clickEl(el) {
         if (!el) return;
+        el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
         el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
         el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-        el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        el.click();
     }
 
+    // Find 3-line filter button beside search
+    function findFilterButtonNear(input) {
+        if (!input) return null;
+        const container = input.closest("form, .search, .search-bar, .input-group, header, .top") || document;
+        const candidates = Array.from(container.querySelectorAll("button, [role='button'], div"))
+            .filter(isVisible)
+            .filter(el => el.querySelector("svg"));
+        if (candidates.length) {
+            candidates.sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+            return candidates[0];
+        }
+        return Array.from(document.querySelectorAll("button, [role='button']"))
+            .find(el => /menu|filter|☰/i.test((el.innerText||"") + (el.title||"") + (el.getAttribute("aria-label")||"")));
+    }
+
+    // --- Main Loop ---
     while (true) {
         try {
-            // 1. Wait for search input
-            let searchBox;
-            while (!(searchBox = document.querySelector("input[placeholder*='How can I help']"))) {
-                await delay(1000);
-            }
-            searchBox.value = randomText();
-            searchBox.dispatchEvent(new Event("input", { bubbles: true }));
-            console.log("⌨️ Typed random text");
+            console.log("🔎 Starting new cycle...");
+
+            // 1. Wait for search box
+            const searchInput = await waitFor(() => document.querySelector("input"), "search input");
+            searchInput.value = randomText();
+            searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+            console.log("✍️ Typed random text");
             await delay(7000);
 
-            // 2. Click 3-line filter button beside search bar
-            let container = searchBox.closest("div, form, header");
-            let threeLineBtn = container ? container.querySelector("button, [role='button']") : null;
-            if (threeLineBtn) {
-                click(threeLineBtn);
-                console.log("☰ Clicked 3-line filter button");
-            }
+            // 2. Click 3-line filter button
+            const filterBtn = await waitFor(() => findFilterButtonNear(searchInput), "3-line filter button");
+            clickEl(filterBtn);
+            console.log("☰ Clicked 3-line button");
             await delay(7000);
 
-            // 3. Select India from menu
-            let indiaEl;
-            while (!(indiaEl = [...document.querySelectorAll("li, div, span, button, option")]
-                .find(el => /india/i.test(el.innerText || "")))) {
-                await delay(1000);
-            }
-            click(indiaEl);
+            // 3. Select location = India
+            const locationDropdown = await waitFor("select", "location dropdown");
+            locationDropdown.value = "India";
+            locationDropdown.dispatchEvent(new Event("change", { bubbles: true }));
             console.log("🌍 Selected India");
             await delay(7000);
 
-            // 4. Click Search (magnifier button)
-            let searchBtn;
-            while (!(searchBtn = document.querySelector("button svg[viewBox*='magnifying']")?.closest("button"))) {
-                await delay(1000);
+            // 4. Click Search button
+            let searchBtn = document.querySelector("button[type='submit']") 
+                         || document.querySelector("button svg")?.closest("button");
+            if (searchBtn) {
+                clickEl(searchBtn);
+                console.log("🔍 Clicked search");
             }
-            click(searchBtn);
-            console.log("🔍 Clicked Search button");
             await delay(7000);
 
             // 5. Click first result
-            let firstResult;
-            while (!(firstResult = document.querySelector(".result-item, .list-item, a, h3"))) {
-                await delay(1000);
-            }
-            click(firstResult);
-            console.log("📑 Clicked first result");
+            const firstResult = await waitFor(() => document.querySelector("a, .result-item, h3"), "first search result");
+            clickEl(firstResult);
+            console.log("📄 Clicked first search result");
             await delay(7000);
 
-            // 6. Click ASK logo (home)
-            let askLogo;
-            while (!(askLogo = [...document.querySelectorAll("a, span, img")]
-                .find(el => /^\s*ASK\s*$/i.test(el.innerText || "") || /ask/i.test(el.getAttribute("alt") || "")))) {
-                await delay(1000);
-            }
-            click(askLogo);
-            console.log("🏠 Clicked ASK logo");
+            // 6. Click ASK logo (top-left)
+            const askLogo = await waitFor(() =>
+                [...document.querySelectorAll("a, img, span, div")]
+                    .find(el => /ask/i.test(el.innerText || "") || el.getAttribute("alt") === "ASK"),
+                "ASK logo"
+            );
+            clickEl(askLogo);
+            console.log("🏠 Clicked ASK logo (home)");
             await delay(7000);
 
         } catch (err) {
-            console.error("⚠️ Error:", err);
+            console.error("❌ Error:", err);
             await delay(7000);
         }
     }
